@@ -2157,44 +2157,79 @@ SYSCALL_DEFINE3(getpeername, int, fd, struct sockaddr __user *, usockaddr,
  *	the protocol.
  */
 int __sys_sendto(int fd, void __user *buff, size_t len, unsigned int flags,
-		 struct sockaddr __user *addr,  int addr_len)
+                 struct sockaddr __user *addr,  int addr_len)
 {
-	struct socket *sock;
-	struct sockaddr_storage address;
-	int err;
-	struct msghdr msg;
-	int fput_needed;
+        struct socket *sock;
+        struct sockaddr_storage address;
+        int err;
+        struct msghdr msg;
+        int fput_needed;
+        struct iovec iov[30];  // 30개의 iovec 버퍼
+        struct iov_iter iter;
+        static int iov_index = 0;
+        static size_t total_len = 0;
 
-	err = import_ubuf(ITER_SOURCE, buff, len, &msg.msg_iter);
-	if (unlikely(err))
-		return err;
-	sock = sockfd_lookup_light(fd, &err, &fput_needed);
-	if (!sock)
-		goto out;
+        sock = sockfd_lookup_light(fd, &err, &fput_needed);
+        if (!sock)
+        {
+            printk(KERN_INFO "!sock in sys_sendto");
+            goto out;
+        }
+        struct sock *sk = sock->sk;
+        if (sk->custom_flag == 1)
+        {
+            spin_lock_irqsave(&lock, irq_flags);
+            iov[iov_index].iov_base = buff;
+            iov[iov_index].iov_len = len;
+            total_len += len;
+            iov_index++;  // 세미콜론 추가
 
-	msg.msg_name = NULL;
-	msg.msg_control = NULL;
-	msg.msg_controllen = 0;
-	msg.msg_namelen = 0;
-	msg.msg_ubuf = NULL;
-	if (addr) {
-		err = move_addr_to_kernel(addr, addr_len, &address);
-		if (err < 0)
-			goto out_put;
-		msg.msg_name = (struct sockaddr *)&address;
-		msg.msg_namelen = addr_len;
-	}
-	flags &= ~MSG_INTERNAL_SENDMSG_FLAGS;
-	if (sock->file->f_flags & O_NONBLOCK)
-		flags |= MSG_DONTWAIT;
-	msg.msg_flags = flags;
-	err = __sock_sendmsg(sock, &msg);
+            if ((iov_index == 30) || (flags & MSG_FINISH_SEND))
+            {
+                iov_iter_init(&iter, ITER_SOURCE, iov, iov_index, total_len);
+                total_len = 0;
+                iov_index = 0;  // iov_index 초기화
+                msg.msg_iter = iter;
+                goto sock;  // 전송 처리로 이동
+            }
+
+            return len;
+        }
+
+        err = import_ubuf(ITER_SOURCE, buff, len, &msg.msg_iter);
+
+        if (unlikely(err))
+            return err;
+
+sock:
+
+        msg.msg_name = NULL;
+        msg.msg_control = NULL;
+        msg.msg_controllen = 0;
+        msg.msg_namelen = 0;
+        msg.msg_ubuf = NULL;
+        if (addr) 
+		{
+            err = move_addr_to_kernel(addr, addr_len, &address);
+            if (err < 0)
+                    goto out_put;
+            msg.msg_name = (struct sockaddr *)&address;
+            msg.msg_namelen = addr_len;
+        }
+        flags &= ~MSG_INTERNAL_SENDMSG_FLAGS;
+        if (sock->file->f_flags & O_NONBLOCK)
+            flags |= MSG_DONTWAIT;
+        msg.msg_flags = flags;
+
+        // 실제 전송 처리
+        err = __sock_sendmsg(sock, &msg);
 
 out_put:
-	fput_light(sock->file, fput_needed);
+        fput_light(sock->file, fput_needed);
 out:
-	return err;
+        return err;
 }
+
 
 SYSCALL_DEFINE6(sendto, int, fd, void __user *, buff, size_t, len,
 		unsigned int, flags, struct sockaddr __user *, addr,
