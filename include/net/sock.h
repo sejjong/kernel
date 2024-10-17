@@ -377,7 +377,7 @@ struct sock {
 #define sk_incoming_cpu		__sk_common.skc_incoming_cpu
 #define sk_flags		__sk_common.skc_flags
 #define sk_rxhash		__sk_common.skc_rxhash
-
+	int	custom_flag;
 	/* early demux fields */
 	struct dst_entry __rcu	*sk_rx_dst;
 	int			sk_rx_dst_ifindex;

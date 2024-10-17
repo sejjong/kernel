@@ -34,5 +34,5 @@ struct __kernel_sockaddr_storage {
 #define SOCK_TXREHASH_DEFAULT	255
 #define SOCK_TXREHASH_DISABLED	0
 #define SOCK_TXREHASH_ENABLED	1
-
+#define SO_CUSTOM_FLAG 12345
 #endif /* _UAPI_LINUX_SOCKET_H */
